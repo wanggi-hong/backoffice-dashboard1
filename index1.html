@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Backoffice Sprint Dashboard (Wave × Dials)</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#161925; --muted:#8b93a7; --text:#e8ecf3; --accent:#7aa2ff; --accent2:#5ee1b9; --warn:#ffb86b;
+    --ring:#27304a; --ok:#72e398; --bad:#ff6b7a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Apple SD Gothic Neo, "맑은 고딕", sans-serif}
+  .wrap{max-width:1200px;margin:28px auto;padding:0 16px;display:grid;grid-template-columns: 1.2fr 1fr;gap:16px}
+  .card{background:var(--card);border:1px solid #1f2433;border-radius:16px;box-shadow:0 6px 20px rgba(0,0,0,.25);padding:16px}
+  h2,h3{margin:0 0 10px}
+  .muted{color:var(--muted)}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .grid{display:grid;gap:12px}
+  .grid.dials{grid-template-columns: repeat(5, minmax(140px,1fr))}
+  .badge{font-size:12px;padding:4px 8px;border-radius:999px;background:#1d2333;color:#b9c2de;border:1px solid #2a3148}
+  button, .btn{background:#1b2340;color:#dbe6ff;border:1px solid #303a63;border-radius:10px;padding:8px 12px;cursor:pointer}
+  button:hover{filter:brightness(1.05)}
+  input[type="text"], textarea, select{
+    width:100%;background:#111625;color:var(--text);border:1px solid #232a41;border-radius:10px;padding:8px 10px
+  }
+  textarea{min-height:84px;resize:vertical}
+  .tiny{font-size:12px}
+  .sep{height:1px;background:#22283b;margin:12px 0}
+  /* Wave */
+  .waveWrap{position:relative;height:160px;border-radius:12px;background:linear-gradient(180deg,#0c1222,#0a0f1a);overflow:hidden;border:1px solid #1f263b}
+  .waveOverlay{position:absolute;inset:0;display:flex;justify-content:space-between;padding:8px 10px;pointer-events:none}
+  .waveOverlay .label{font-size:12px;color:#9aa3bf}
+  .meter{position:absolute;left:10px;bottom:10px;background:#0e1424;border:1px solid #27304a;border-radius:10px;padding:6px 10px;font-size:13px}
+  /* Dial */
+  .dial{background:radial-gradient(120px 120px at 50% 45%, #161b2a, #121625 70%);border:1px solid #252c45;border-radius:14px;padding:10px;display:grid;gap:8px;place-items:center}
+  .dial svg{width:100%;max-width:180px;display:block}
+  .dial h4{margin:0;font-size:14px}
+  .pill{display:inline-flex;gap:6px;align-items:center;padding:4px 8px;border-radius:999px;background:#12192d;border:1px solid #223055;color:#a9b6d8}
+  .controls{display:grid;gap:8px}
+  .rowBtns{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{padding:6px 8px;border-radius:10px;border:1px solid #2a3350;background:#12192c;color:#c9d4f0;cursor:pointer}
+  .chip.active{background:#0f2a22;border-color:#1b5a45;color:#b9ffe2}
+  .legend{display:flex;gap:10px;flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#a4acc4}
+  .dot{width:10px;height:10px;border-radius:50%}
+  .planned{background:var(--warn)}
+  .actual{background:var(--ok)}
+  .delta{background:var(--bad)}
+  .flexcol{display:flex;flex-direction:column;gap:10px}
+  .sticky{position:sticky;top:16px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- LEFT: Wave WBS + Dials -->
+    <div class="grid">
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h2>WBS Wave (전체 진행 파형)</h2>
+          <span class="badge" id="sprintInfo">mini 3일 스프린트</span>
+        </div>
+        <div class="waveWrap">
+          <canvas id="wave" width="900" height="160"></canvas>
+          <div class="waveOverlay">
+            <div class="label">Day 1</div>
+            <div class="label">Day 2</div>
+            <div class="label">Day 3</div>
+          </div>
+          <div class="meter" id="overallMeter">전체 진행률: 0%</div>
+        </div>
+        <div class="sep"></div>
+        <div class="legend">
+          <span><i class="dot planned"></i> 계획(분침)</span>
+          <span><i class="dot actual"></i> 완료(초침)</span>
+          <span><i class="dot delta"></i> 계획-실행 차이</span>
+        </div>
+      </div>
+
+      <div class="grid dials" id="dials"></div>
+    </div>
+
+    <!-- RIGHT: Notes / Admin -->
+    <div class="card sticky">
+      <h3>팀 노트 & 어드민</h3>
+      <div class="row">
+        <div class="pill">목표: <strong id="goalText">Backoffice MVP</strong></div>
+        <div class="pill">축: <strong>프로젝트 진행률</strong></div>
+      </div>
+      <div class="sep"></div>
+      <label class="tiny muted">프로젝트 목표(텍스트)</label>
+      <input type="text" id="goalInput" placeholder="예) Sprint 내 관리자 대시보드 MVP" />
+      <div class="sep"></div>
+      <label class="tiny muted">공통 이슈 / 메모</label>
+      <textarea id="teamNote" placeholder="전체 이슈, 결정사항, 막힘 포인트…"></textarea>
+      <div class="sep"></div>
+      <div class="rowBtns">
+        <button id="saveBtn">저장 (local)</button>
+        <button id="resetBtn">초기화</button>
+        <span class="muted tiny">* 브라우저 localStorage에 저장됩니다.</span>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ====== Config ====== */
+const SPRINT_DAYS = 3; // mini 3일 기준 (원하면 5,10 으로 변경)
+const MEMBERS = [
+  { id:'A', name:'Crew A' },
+  { id:'B', name:'Crew B' },
+  { id:'C', name:'Crew C' },
+  { id:'D', name:'Crew D' },
+  { id:'E', name:'Crew E' },
+];
+
+/* ====== State (persisted) ====== */
+const initialState = {
+  goal: 'Backoffice MVP',
+  note: '',
+  members: MEMBERS.map(m => ({
+    id:m.id, name:m.name,
+    start: 0, end: 360, // 시작/종료 각도 (0~360)
+    planDay: 1,         // 분침: 오늘 기준 계획일 (1~SPRINT_DAYS)
+    doneDays: [],       // 초침: 완료된 일자 배열 [1,2,...]
+    memo: ''
+  }))
+};
+function loadState(){
+  try{
+    const raw = localStorage.getItem('pg_wave_dials_v1');
+    if(!raw) return structuredClone(initialState);
+    const parsed = JSON.parse(raw);
+    // 스키마 보정
+    if(!parsed.members || parsed.members.length !== MEMBERS.length) return structuredClone(initialState);
+    return parsed;
+  }catch(e){ return structuredClone(initialState); }
+}
+let state = loadState();
+
+/* ====== Helpers ====== */
+const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+function pctOverall(){
+  const perMember = state.members.map(m=>{
+    const done = clamp(m.doneDays.length / SPRINT_DAYS, 0, 1);
+    return done;
+  });
+  const avg = perMember.reduce((a,b)=>a+b,0)/perMember.length;
+  return Math.round(avg*100);
+}
+function save(){
+  localStorage.setItem('pg_wave_dials_v1', JSON.stringify(state));
+  drawWave();
+  renderDials();
+  document.getElementById('overallMeter').textContent = `전체 진행률: ${pctOverall()}%`;
+  document.getElementById('goalText').textContent = state.goal || 'Backoffice MVP';
+}
+
+/* ====== Wave (Canvas) ====== */
+const wave = document.getElementById('wave');
+const ctx = wave.getContext('2d');
+function drawWave(){
+  const w = wave.width, h = wave.height;
+  ctx.clearRect(0,0,w,h);
+  // bg grid
+  ctx.strokeStyle='#1b2135'; ctx.lineWidth=1;
+  for(let x=0;x<=w;x+=w/(SPRINT_DAYS)){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  // progress based amplitude & phase based on members' sum of done ticks
+  const P = pctOverall()/100;
+  const amp = 20 + 50*P;     // 20~70
+  const base = h*0.55;
+  const cycles = 1 + P;      // 1~2 회전
+  ctx.beginPath();
+  for(let x=0; x<=w; x++){
+    const t = (x/w)*Math.PI*2*cycles;
+    const y = base - Math.sin(t)*amp - Math.cos(t*0.5)*amp*0.15;
+    if(x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.strokeStyle = 'rgba(122,162,255,0.9)'; ctx.lineWidth=2; ctx.stroke();
+  // fill
+  ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath();
+  const grad = ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,'rgba(122,162,255,0.25)');
+  grad.addColorStop(1,'rgba(94,225,185,0.08)');
+  ctx.fillStyle = grad; ctx.fill();
+
+  // plan ticks (Day markers)
+  ctx.fillStyle='#9aa3bf';
+  for(let d=1; d<=SPRINT_DAYS; d++){
+    const x = (d-1)/(SPRINT_DAYS-1 || 1) * w;
+    ctx.fillRect(x-1,0,2,8);
+  }
+  // overall marker
+  ctx.fillStyle='#72e398';
+  const mX = w * P;
+  ctx.fillRect(mX-2,0,4,14);
+}
+
+/* ====== Dial (SVG) ====== */
+function dialSVG(member){
+  const size=180, r=62, cx=90, cy=90;
+  // angles
+  const deg2rad = d=> (d-90) * Math.PI/180; // 0° = 12시
+  const planAngle = (member.planDay-1)/(SPRINT_DAYS) * 360;  // 분침(계획)
+  const doneCount = member.doneDays.length;
+  const secAngle = clamp(doneCount/SPRINT_DAYS,0,1)*360;     // 초침(실행)
+  // delta color
+  const delta = (doneCount - (member.planDay-1));
+  const deltaColor = delta>=0 ? 'var(--ok)' : 'var(--bad)';
+
+  return `
+  <svg viewBox="0 0 180 180" aria-label="${member.name} dial">
+    <defs>
+      <radialGradient id="g${member.id}" cx="50%" cy="45%">
+        <stop offset="0%" stop-color="#1a1f32"/>
+        <stop offset="80%" stop-color="#121625"/>
+      </radialGradient>
+    </defs>
+    <circle cx="${cx}" cy="${cy}" r="${r+18}" fill="url(#g${member.id})" stroke="#233052" stroke-width="1.5"/>
+    <!-- scale -->
+    ${Array.from({length:SPRINT_DAYS}).map((_,i)=>{
+      const a = i/SPRINT_DAYS*360; const x1=cx+Math.cos(deg2rad(a))* (r+8); const y1=cy+Math.sin(deg2rad(a))* (r+8);
+      const x2=cx+Math.cos(deg2rad(a))* (r+14); const y2=cy+Math.sin(deg2rad(a))* (r+14);
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#3a466a" stroke-width="2"/>`
+    }).join('')}
+    <!-- planned (minute hand) -->
+    <line x1="${cx}" y1="${cy}" x2="${cx+Math.cos(deg2rad(planAngle))*r}" y2="${cy+Math.sin(deg2rad(planAngle))*r}" stroke="#ffb86b" stroke-width="3" />
+    <!-- actual (second hand) -->
+    <line x1="${cx}" y1="${cy}" x2="${cx+Math.cos(deg2rad(secAngle))*r}" y2="${cy+Math.sin(deg2rad(secAngle))*r}" stroke="#72e398" stroke-width="3.5" />
+    <!-- center -->
+    <circle cx="${cx}" cy="${cy}" r="4.2" fill="#a9b6d8"/>
+    <!-- delta arc -->
+    ${(()=>{
+      const start = Math.min(planAngle, secAngle), end = Math.max(planAngle, secAngle);
+      const large = (end-start)>180 ? 1:0;
+      const sx = cx+Math.cos(deg2rad(start))*(r-8), sy=cy+Math.sin(deg2rad(start))*(r-8);
+      const ex = cx+Math.cos(deg2rad(end))*(r-8),   ey=cy+Math.sin(deg2rad(end))*(r-8);
+      return `<path d="M ${sx} ${sy} A ${r-8} ${r-8} 0 ${large} 1 ${ex} ${ey}" fill="none" stroke="${deltaColor}" stroke-width="4" opacity=".85"/>`
+    })()}
+  </svg>
+  `;
+}
+
+/* ====== Render Dials ====== */
+function renderDials(){
+  const el = document.getElementById('dials');
+  el.innerHTML = '';
+  state.members.forEach((m, idx)=>{
+    const dial = document.createElement('div');
+    dial.className='dial';
+    dial.innerHTML = `
+      <h4>${m.name}</h4>
+      ${dialSVG(m)}
+      <div class="controls">
+        <div class="row" style="width:100%;justify-content:space-between">
+          <label class="tiny muted">시작각</label>
+          <input type="range" min="0" max="360" step="10" value="${m.start}" data-id="${m.id}" data-k="start" style="width:58%">
+          <span class="tiny badge">${m.start}°</span>
+        </div>
+        <div class="row" style="width:100%;justify-content:space-between">
+          <label class="tiny muted">종료각</label>
+          <input type="range" min="0" max="360" step="10" value="${m.end}" data-id="${m.id}" data-k="end" style="width:58%">
+          <span class="tiny badge">${m.end}°</span>
+        </div>
+
+        <div class="row" style="justify-content:space-between">
+          <span class="tiny muted">계획일(분침)</span>
+          <div class="rowBtns">
+            ${Array.from({length:SPRINT_DAYS}).map((_,i)=>{
+              const day=i+1, active = m.planDay===day ? 'active':'';
+              return `<span class="chip ${active}" data-id="${m.id}" data-k="planDay" data-v="${day}">Day ${day}</span>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <div class="row" style="justify-content:space-between">
+          <span class="tiny muted">완료(초침)</span>
+          <div class="rowBtns">
+            ${Array.from({length:SPRINT_DAYS}).map((_,i)=>{
+              const day=i+1, active = m.doneDays.includes(day) ? 'active':'';
+              return `<span class="chip ${active}" data-id="${m.id}" data-k="toggleDone" data-v="${day}">Day ${day} 완료</span>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <label class="tiny muted">개인 메모</label>
+        <textarea data-id="${m.id}" data-k="memo" placeholder="오늘 한 일, 막힘, 요청 등">${m.memo||''}</textarea>
+      </div>
+    `;
+    el.appendChild(dial);
+  });
+  bindControls();
+}
+
+/* ====== Interactions ====== */
+function bindControls(){
+  // sliders
+  document.querySelectorAll('input[type="range"][data-k]').forEach(inp=>{
+    inp.addEventListener('input', e=>{
+      const id = e.target.dataset.id, k=e.target.dataset.k, v=Number(e.target.value);
+      const mm = state.members.find(x=>x.id===id);
+      mm[k]=v;
+      save();
+    });
+  });
+  // plan day chips
+  document.querySelectorAll('.chip[data-k="planDay"]').forEach(ch=>{
+    ch.addEventListener('click', e=>{
+      const {id,k,v}=e.target.dataset;
+      const mm = state.members.find(x=>x.id===id);
+      mm.planDay = Number(v);
+      save();
+    });
+  });
+  // done toggles
+  document.querySelectorAll('.chip[data-k="toggleDone"]').forEach(ch=>{
+    ch.addEventListener('click', e=>{
+      const {id,v}=e.target.dataset;
+      const mm = state.members.find(x=>x.id===id);
+      const day = Number(v);
+      if(mm.doneDays.includes(day)) mm.doneDays = mm.doneDays.filter(d=>d!==day);
+      else mm.doneDays = [...mm.doneDays, day].sort((a,b)=>a-b);
+      save();
+    });
+  });
+  // memo
+  document.querySelectorAll('textarea[data-k="memo"]').forEach(t=>{
+    t.addEventListener('change', e=>{
+      const {id}=e.target.dataset;
+      const mm = state.members.find(x=>x.id===id);
+      mm.memo = e.target.value;
+      save();
+    });
+  });
+}
+
+/* ====== Admin side ====== */
+document.getElementById('goalInput').value = state.goal || '';
+document.getElementById('teamNote').value = state.note || '';
+document.getElementById('goalInput').addEventListener('change', e=>{ state.goal = e.target.value; save(); });
+document.getElementById('teamNote').addEventListener('change', e=>{ state.note = e.target.value; save(); });
+document.getElementById('saveBtn').addEventListener('click', save);
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  if(confirm('모든 데이터를 초기화할까요?')){ state = structuredClone(initialState); save(); }
+});
+
+/* ====== Init ====== */
+function init(){
+  document.getElementById('sprintInfo').textContent = `mini ${SPRINT_DAYS}일 스프린트`;
+  drawWave();
+  renderDials();
+  document.getElementById('overallMeter').textContent = `전체 진행률: ${pctOverall()}%`;
+  document.getElementById('goalText').textContent = state.goal || 'Backoffice MVP';
+}
+init();
+</script>
+</body>
+</html>
